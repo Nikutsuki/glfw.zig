@@ -420,6 +420,17 @@ static int getKeyMods(void)
     if (GetKeyState(VK_NUMLOCK) & 1)
         mods |= GLFW_MOD_NUM_LOCK;
 
+    _glfw.win32.cachedKeyMods = mods;
+    return mods;
+}
+
+static inline int getFastMouseMods(WPARAM wParam)
+{
+    int mods = _glfw.win32.cachedKeyMods & ~(GLFW_MOD_CONTROL | GLFW_MOD_SHIFT);
+    if (wParam & MK_CONTROL)
+        mods |= GLFW_MOD_CONTROL;
+    if (wParam & MK_SHIFT)
+        mods |= GLFW_MOD_SHIFT;
     return mods;
 }
 
@@ -530,7 +541,9 @@ static void maximizeWindowManually(_GLFWwindow* window)
 //
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    _GLFWwindow* window = GetPropW(hWnd, L"GLFW");
+    _GLFWwindow* window = (_GLFWwindow*) GetWindowLongPtrW(hWnd, GWLP_USERDATA);
+    if (!window)
+        window = GetPropW(hWnd, L"GLFW");
     if (!window)
     {
         if (uMsg == WM_NCCREATE)
@@ -708,6 +721,52 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
         {
             int key, scancode;
             const int action = (HIWORD(lParam) & KF_UP) ? GLFW_RELEASE : GLFW_PRESS;
+            switch (wParam)
+            {
+                case VK_SHIFT:
+                case VK_LSHIFT:
+                case VK_RSHIFT:
+                    if (action == GLFW_PRESS)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_SHIFT;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_SHIFT;
+                    break;
+                case VK_CONTROL:
+                case VK_LCONTROL:
+                case VK_RCONTROL:
+                    if (action == GLFW_PRESS)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_CONTROL;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_CONTROL;
+                    break;
+                case VK_MENU:
+                case VK_LMENU:
+                case VK_RMENU:
+                    if (action == GLFW_PRESS)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_ALT;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_ALT;
+                    break;
+                case VK_LWIN:
+                case VK_RWIN:
+                    if (action == GLFW_PRESS)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_SUPER;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_SUPER;
+                    break;
+                case VK_CAPITAL:
+                    if (GetKeyState(VK_CAPITAL) & 1)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_CAPS_LOCK;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_CAPS_LOCK;
+                    break;
+                case VK_NUMLOCK:
+                    if (GetKeyState(VK_NUMLOCK) & 1)
+                        _glfw.win32.cachedKeyMods |= GLFW_MOD_NUM_LOCK;
+                    else
+                        _glfw.win32.cachedKeyMods &= ~GLFW_MOD_NUM_LOCK;
+                    break;
+            }
             const int mods = getKeyMods();
 
             scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xff));
@@ -837,7 +896,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             if (i > GLFW_MOUSE_BUTTON_LAST)
                 SetCapture(hWnd);
 
-            _glfwInputMouseClick(window, button, action, getKeyMods());
+            _glfwInputMouseClick(window, button, action, getFastMouseMods(wParam));
 
             for (i = 0;  i <= GLFW_MOUSE_BUTTON_LAST;  i++)
             {
@@ -1402,6 +1461,7 @@ static int createNativeWindow(_GLFWwindow* window,
         return GLFW_FALSE;
     }
 
+    SetWindowLongPtrW(window->win32.handle, GWLP_USERDATA, (LONG_PTR) window);
     SetPropW(window->win32.handle, L"GLFW", window);
 
     ChangeWindowMessageFilterEx(window->win32.handle, WM_DROPFILES, MSGFLT_ALLOW, NULL);
@@ -1561,6 +1621,7 @@ void _glfwDestroyWindowWin32(_GLFWwindow* window)
 
     if (window->win32.handle)
     {
+        SetWindowLongPtrW(window->win32.handle, GWLP_USERDATA, 0);
         RemovePropW(window->win32.handle, L"GLFW");
         DestroyWindow(window->win32.handle);
         window->win32.handle = NULL;
@@ -2125,7 +2186,9 @@ void _glfwPollEventsWin32(void)
     handle = GetActiveWindow();
     if (handle)
     {
-        window = GetPropW(handle, L"GLFW");
+        window = (_GLFWwindow*) GetWindowLongPtrW(handle, GWLP_USERDATA);
+        if (!window)
+            window = GetPropW(handle, L"GLFW");
         if (window)
         {
             int i;
