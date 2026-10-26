@@ -403,7 +403,7 @@ static void updateFramebufferTransparency(const _GLFWwindow* window)
 
 // Retrieves and translates modifier keys
 //
-static int getKeyMods(void)
+static int updateKeyMods(void)
 {
     int mods = 0;
 
@@ -422,6 +422,11 @@ static int getKeyMods(void)
 
     _glfw.win32.cachedKeyMods = mods;
     return mods;
+}
+
+static inline int getKeyMods(void)
+{
+    return _glfw.win32.cachedKeyMods;
 }
 
 static inline int getFastMouseMods(WPARAM wParam)
@@ -599,6 +604,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
         case WM_SETFOCUS:
         {
+            updateKeyMods();
             _glfwInputWindowFocus(window, GLFW_TRUE);
 
             // HACK: Do not disable cursor while the user is interacting with
@@ -767,7 +773,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                         _glfw.win32.cachedKeyMods &= ~GLFW_MOD_NUM_LOCK;
                     break;
             }
-            const int mods = getKeyMods();
+            const int mods = updateKeyMods();
 
             scancode = (HIWORD(lParam) & (KF_EXTENDED | 0xff));
             if (!(scancode & 0xff))
@@ -2202,16 +2208,16 @@ void _glfwPollEventsWin32(void)
 
             for (i = 0;  i < 4;  i++)
             {
-                const int vk = keys[i][0];
                 const int key = keys[i][1];
-                const int scancode = _glfw.win32.scancodes[key];
-
-                if ((GetKeyState(vk) & 0x8000))
-                    continue;
                 if (window->keys[key] != GLFW_PRESS)
                     continue;
 
-                _glfwInputKey(window, key, scancode, GLFW_RELEASE, getKeyMods());
+                const int vk = keys[i][0];
+                if ((GetKeyState(vk) & 0x8000))
+                    continue;
+
+                const int scancode = _glfw.win32.scancodes[key];
+                _glfwInputKey(window, key, scancode, GLFW_RELEASE, updateKeyMods());
             }
         }
     }
